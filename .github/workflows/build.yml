@@ -1,4 +1,4 @@
-name: Build BulletinPro with Nuitka
+name: Build BulletinPro with PyInstaller
 
 on:
   push:
@@ -25,34 +25,36 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install nuitka ordered-set zstandard
         pip install -r requirements.txt
+        pip install pyinstaller
     
-    - name: Build with Nuitka
+    - name: Build with PyInstaller
       run: |
-        python -m nuitka `
-          --standalone `
+        pyinstaller `
+          --name=BulletinPro `
           --onefile `
-          --enable-plugin=tk-inter `
-          --windows-disable-console `
-          --include-data-files=config.py=config.py `
-          --include-package=flet `
-          --include-package=flet_core `
-          --include-package=flet_runtime `
-          --follow-imports `
-          --output-dir=dist `
-          --output-filename=BulletinPro.exe `
-          --assume-yes-for-downloads `
+          --windowed `
+          --add-data "config.py;." `
+          --hidden-import=flet.fastapi `
+          --hidden-import=flet_core `
+          --hidden-import=flet_runtime `
+          --hidden-import=cairocffi `
+          --hidden-import=weasyprint `
+          --collect-all=flet `
+          --collect-all=flet_core `
+          --collect-all=flet_runtime `
+          --collect-all=weasyprint `
+          --collect-all=cairocffi `
           Page2.py
       shell: powershell
     
     - name: Test executable
       run: |
         if (Test-Path dist/BulletinPro.exe) {
-          Write-Host "✅ Executable created successfully"
+          Write-Host "✅ Executable created"
           Get-Item dist/BulletinPro.exe | Select-Object Name, Length
         } else {
-          Write-Host "❌ Executable not found"
+          Write-Host "❌ Build failed"
           exit 1
         }
       shell: powershell
@@ -62,7 +64,6 @@ jobs:
       with:
         name: BulletinPro-Windows
         path: dist/BulletinPro.exe
-        retention-days: 90
 
   build-linux:
     runs-on: ubuntu-latest
@@ -80,12 +81,11 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          patchelf \
-          ccache \
           python3-dev \
           libcairo2-dev \
           libpango1.0-dev \
-          libgdk-pixbuf2.0-dev \
+          libpangocairo-1.0-0 \
+          libgdk-pixbuf-2.0-0 \
           libffi-dev \
           shared-mime-info \
           dpkg-dev \
@@ -94,82 +94,66 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install nuitka ordered-set zstandard
         pip install -r requirements.txt
+        pip install pyinstaller
     
-    - name: Build with Nuitka
+    - name: Build with PyInstaller
       run: |
-        python -m nuitka \
-          --standalone \
+        pyinstaller \
+          --name=BulletinPro \
           --onefile \
-          --enable-plugin=tk-inter \
-          --include-data-files=config.py=config.py \
-          --include-package=flet \
-          --include-package=flet_core \
-          --include-package=flet_runtime \
-          --follow-imports \
-          --output-dir=dist \
-          --output-filename=BulletinPro \
-          --assume-yes-for-downloads \
+          --windowed \
+          --add-data "config.py:." \
+          --hidden-import=flet.fastapi \
+          --hidden-import=flet_core \
+          --hidden-import=flet_runtime \
+          --collect-all=flet \
+          --collect-all=flet_core \
+          --collect-all=flet_runtime \
           Page2.py
     
     - name: Test executable
       run: |
         if [ -f dist/BulletinPro ]; then
-          echo "✅ Executable created successfully"
+          echo "✅ Executable created"
           ls -lh dist/BulletinPro
-          file dist/BulletinPro
+          chmod +x dist/BulletinPro
         else
-          echo "❌ Executable not found"
+          echo "❌ Build failed"
           exit 1
         fi
     
-    - name: Make executable
-      run: chmod +x dist/BulletinPro
-    
-    - name: Create DEB package structure
+    - name: Create DEB package
       run: |
-        # Variables
-        VERSION="1.0.0"
-        PACKAGE_NAME="bulletinpro"
-        ARCH="amd64"
+        VERSION="1.0.2"
+        PACKAGE="bulletinpro_${VERSION}_amd64"
         
-        # Create directories
-        mkdir -p ${PACKAGE_NAME}_${VERSION}_${ARCH}/DEBIAN
-        mkdir -p ${PACKAGE_NAME}_${VERSION}_${ARCH}/usr/bin
-        mkdir -p ${PACKAGE_NAME}_${VERSION}_${ARCH}/usr/share/applications
-        mkdir -p ${PACKAGE_NAME}_${VERSION}_${ARCH}/usr/share/pixmaps
-        mkdir -p ${PACKAGE_NAME}_${VERSION}_${ARCH}/usr/share/doc/${PACKAGE_NAME}
+        # Structure
+        mkdir -p ${PACKAGE}/DEBIAN
+        mkdir -p ${PACKAGE}/usr/bin
+        mkdir -p ${PACKAGE}/usr/share/applications
+        mkdir -p ${PACKAGE}/usr/share/doc/bulletinpro
         
         # Copy executable
-        cp dist/BulletinPro ${PACKAGE_NAME}_${VERSION}_${ARCH}/usr/bin/bulletinpro
-        chmod 755 ${PACKAGE_NAME}_${VERSION}_${ARCH}/usr/bin/bulletinpro
+        cp dist/BulletinPro ${PACKAGE}/usr/bin/bulletinpro
+        chmod 755 ${PACKAGE}/usr/bin/bulletinpro
         
-        # Create control file
-        cat > ${PACKAGE_NAME}_${VERSION}_${ARCH}/DEBIAN/control << EOF
-        Package: ${PACKAGE_NAME}
-        Version: ${VERSION}
+        # Control file
+        cat > ${PACKAGE}/DEBIAN/control << 'EOF'
+        Package: bulletinpro
+        Version: 1.0.2
         Section: education
         Priority: optional
-        Architecture: ${ARCH}
-        Depends: libcairo2, libpango-1.0-0, libpangocairo-1.0-0, libgdk-pixbuf-2.0-0 | libgdk-pixbuf2.0-0, libffi8 | libffi7 | libffi6, libc6
+        Architecture: amd64
+        Depends: libcairo2, libpango-1.0-0, libpangocairo-1.0-0, libgdk-pixbuf-2.0-0, libffi8 | libffi7, libc6
         Maintainer: BulletinPro Team <contact@bulletinpro.com>
         Description: Système de gestion de bulletins scolaires
-         BulletinPro est une application de gestion complète pour les
-         établissements scolaires permettant de générer des bulletins
-         de notes professionnels avec synchronisation cloud.
-         .
-         Fonctionnalités:
-          - Gestion des élèves, enseignants et classes
-          - Saisie des notes et calcul automatique des moyennes
-          - Génération de bulletins PDF personnalisables
-          - Synchronisation temps réel avec Supabase
-          - Interface moderne et intuitive
-        Homepage: https://github.com/Zelipro/Bulletin
+         Application de gestion complète pour établissements scolaires.
+         Génération de bulletins PDF, gestion des notes, sync cloud.
         EOF
         
-        # Create desktop entry
-        cat > ${PACKAGE_NAME}_${VERSION}_${ARCH}/usr/share/applications/bulletinpro.desktop << 'EOF'
+        # Desktop entry
+        cat > ${PACKAGE}/usr/share/applications/bulletinpro.desktop << 'EOF'
         [Desktop Entry]
         Version=1.0
         Type=Application
@@ -179,87 +163,39 @@ jobs:
         Icon=bulletinpro
         Terminal=false
         Categories=Education;Office;
-        Keywords=bulletin;notes;école;élèves;
-        StartupNotify=true
         EOF
         
-        # Create copyright file
-        cat > ${PACKAGE_NAME}_${VERSION}_${ARCH}/usr/share/doc/${PACKAGE_NAME}/copyright << EOF
-        Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-        Upstream-Name: BulletinPro
-        Upstream-Contact: contact@bulletinpro.com
-        Source: https://github.com/Zelipro/Bulletin
-        
-        Files: *
-        Copyright: 2024 BulletinPro Team
-        License: Proprietary
-        EOF
-        
-        # Create changelog
-        cat > ${PACKAGE_NAME}_${VERSION}_${ARCH}/usr/share/doc/${PACKAGE_NAME}/changelog.Debian << EOF
-        ${PACKAGE_NAME} (${VERSION}) stable; urgency=medium
-        
-          * Initial release
-          * Gestion complète des bulletins scolaires
-          * Support multi-établissements
-          * Synchronisation cloud
-        
-         -- BulletinPro Team <contact@bulletinpro.com>  $(date -R)
-        EOF
-        gzip -9 ${PACKAGE_NAME}_${VERSION}_${ARCH}/usr/share/doc/${PACKAGE_NAME}/changelog.Debian
-        
-        # Create postinst script (exécuté après installation)
-        cat > ${PACKAGE_NAME}_${VERSION}_${ARCH}/DEBIAN/postinst << 'EOF'
+        # Postinst script
+        cat > ${PACKAGE}/DEBIAN/postinst << 'EOF'
         #!/bin/bash
         set -e
-        
-        # Update desktop database
         if command -v update-desktop-database >/dev/null 2>&1; then
             update-desktop-database -q
         fi
-        
         echo "✅ BulletinPro installé avec succès !"
-        echo "Lancez l'application depuis le menu Applications ou avec : bulletinpro"
-        
+        echo "Lancez : bulletinpro"
         exit 0
         EOF
-        chmod 755 ${PACKAGE_NAME}_${VERSION}_${ARCH}/DEBIAN/postinst
+        chmod 755 ${PACKAGE}/DEBIAN/postinst
         
-        # Create prerm script (exécuté avant désinstallation)
-        cat > ${PACKAGE_NAME}_${VERSION}_${ARCH}/DEBIAN/prerm << 'EOF'
-        #!/bin/bash
-        set -e
+        # Build
+        dpkg-deb --build ${PACKAGE}
+        mv ${PACKAGE}.deb BulletinPro-${VERSION}-amd64.deb
         
-        echo "Désinstallation de BulletinPro..."
-        
-        exit 0
-        EOF
-        chmod 755 ${PACKAGE_NAME}_${VERSION}_${ARCH}/DEBIAN/prerm
-        
-        # Build DEB package
-        dpkg-deb --build ${PACKAGE_NAME}_${VERSION}_${ARCH}
-        
-        # Rename for clarity
-        mv ${PACKAGE_NAME}_${VERSION}_${ARCH}.deb BulletinPro-${VERSION}-${ARCH}.deb
-        
-        # Show package info
-        echo "📦 Package created:"
-        ls -lh BulletinPro-${VERSION}-${ARCH}.deb
-        dpkg-deb --info BulletinPro-${VERSION}-${ARCH}.deb
+        echo "📦 Package info:"
+        dpkg-deb --info BulletinPro-${VERSION}-amd64.deb
     
     - name: Upload Linux executable
       uses: actions/upload-artifact@v4
       with:
         name: BulletinPro-Linux
         path: dist/BulletinPro
-        retention-days: 90
     
     - name: Upload DEB package
       uses: actions/upload-artifact@v4
       with:
         name: BulletinPro-DEB
         path: BulletinPro-*.deb
-        retention-days: 90
 
   create-release:
     needs: [build-windows, build-linux]
@@ -287,83 +223,47 @@ jobs:
     
     - name: Create checksums
       run: |
-        cd windows && sha256sum BulletinPro.exe > BulletinPro-Windows.sha256 && cd ..
-        cd linux && sha256sum BulletinPro > BulletinPro-Linux.sha256 && cd ..
-        cd deb && sha256sum *.deb > BulletinPro-DEB.sha256 && cd ..
+        cd windows && sha256sum BulletinPro.exe > checksums.txt && cd ..
+        cd linux && sha256sum BulletinPro >> checksums.txt && cd ..
+        cd deb && sha256sum *.deb >> checksums.txt && cd ..
     
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
           ./windows/BulletinPro.exe
-          ./windows/BulletinPro-Windows.sha256
           ./linux/BulletinPro
-          ./linux/BulletinPro-Linux.sha256
           ./deb/*.deb
-          ./deb/BulletinPro-DEB.sha256
         body: |
-          ## 🎉 BulletinPro v${{ github.ref_name }}
+          ## 🎉 BulletinPro ${{ github.ref_name }}
           
-          ### 📥 Téléchargements
+          ### 📥 Installation
           
-          **Windows** (.exe)
-          - Téléchargez `BulletinPro.exe`
-          - Double-cliquez pour lancer
-          - Aucune installation requise
+          **Windows:**
+          ```
+          Téléchargez BulletinPro.exe
+          Double-cliquez pour lancer
+          ```
           
-          **Linux** (Binaire)
-          - Téléchargez `BulletinPro`
-          - `chmod +x BulletinPro`
-          - `./BulletinPro`
+          **Linux (Ubuntu/Debian):**
+          ```bash
+          wget [lien-vers-deb]
+          sudo dpkg -i BulletinPro-1.0.2-amd64.deb
+          sudo apt-get install -f  # Si dépendances manquantes
+          bulletinpro
+          ```
           
-          **Ubuntu/Debian** (.deb)
-          - Téléchargez `BulletinPro-1.0.0-amd64.deb`
-          - `sudo dpkg -i BulletinPro-1.0.0-amd64.deb`
-          - Lancez depuis le menu Applications ou : `bulletinpro`
+          **Linux (Binaire):**
+          ```bash
+          chmod +x BulletinPro
+          ./BulletinPro
+          ```
           
-          ### ✨ Nouveautés
-          - Première version stable
-          - Gestion complète des bulletins
-          - Synchronisation cloud avec Supabase
-          
-          ### 🔒 Vérification (optionnel)
-          Vérifiez l'intégrité des fichiers avec les checksums SHA256 fournis.
+          ### ✨ Correctifs
+          - ✅ Fix: Module flet_desktop correctement inclus
+          - ✅ Amélioration: Dépendances .deb complètes
+          - ✅ PyInstaller pour meilleure compatibilité
         draft: false
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Job optionnel : test des executables
-  test-executables:
-    needs: [build-windows, build-linux]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-    
-    steps:
-    - name: Download artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: ${{ matrix.os == 'windows-latest' && 'BulletinPro-Windows' || 'BulletinPro-Linux' }}
-    
-    - name: Test executable (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        Write-Host "Testing Windows executable..."
-        if (Test-Path BulletinPro.exe) {
-          Write-Host "✅ File exists"
-          $fileInfo = Get-Item BulletinPro.exe
-          Write-Host "Size: $($fileInfo.Length / 1MB) MB"
-        }
-      shell: powershell
-    
-    - name: Test executable (Linux)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        echo "Testing Linux executable..."
-        if [ -f BulletinPro ]; then
-          echo "✅ File exists"
-          ls -lh BulletinPro
-          file BulletinPro
-        fi
