@@ -39,7 +39,7 @@ jobs:
           --include-package=flet `
           --include-package=flet_core `
           --include-package=flet_runtime `
-          --include-module=flet_desktop `
+          --follow-imports `
           --output-dir=dist `
           --output-filename=BulletinPro.exe `
           --assume-yes-for-downloads `
@@ -104,6 +104,10 @@ jobs:
           --onefile \
           --enable-plugin=tk-inter \
           --include-data-files=config.py=config.py \
+          --include-package=flet \
+          --include-package=flet_core \
+          --include-package=flet_runtime \
+          --follow-imports \
           --output-dir=dist \
           --output-filename=BulletinPro \
           --assume-yes-for-downloads \
