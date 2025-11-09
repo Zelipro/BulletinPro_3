@@ -1,0 +1,9 @@
+flet>=0.24.0
+flet-core>=0.24.0
+flet-runtime>=0.24.0
+weasyprint>=60.0
+Jinja2>=3.1.0
+supabase>=2.0.0
+python-dotenv>=1.0.0
+cairocffi>=1.6.0
+Pillow>=10.0.0
