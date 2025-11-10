@@ -5,6 +5,7 @@ from datetime import datetime
 from weasyprint import HTML
 from jinja2 import Template
 import os
+from pathlib import Path
 
 def Generation_Bulletin(page, Donner):
     """Génération des bulletins scolaires avec HTML/CSS"""
@@ -13,6 +14,24 @@ def Generation_Bulletin(page, Donner):
     if Donner.get("role") not in ["admin", "prof"]:
         Dialog.alert_dialog(title="Accès refusé", message="Vous n'avez pas les permissions nécessaires.")
         return
+    
+    def get_documents_folder():
+        """Retourne le chemin du dossier Documents selon la plateforme"""
+        home = Path.home()
+        
+        # Windows
+        if os.name == 'nt':
+            documents = home / "Documents"
+        # macOS et Linux
+        else:
+            documents = home / "Documents"
+            # Si le dossier Documents n'existe pas, utiliser le home
+            if not documents.exists():
+                documents = home / "documents"  # Essayer en minuscule
+                if not documents.exists():
+                    documents = home  # Fallback sur home
+        
+        return documents
     
     def Return(Ident):
         con = None
@@ -145,6 +164,7 @@ def Generation_Bulletin(page, Donner):
         finally:
             if con:
                 con.close()    
+    
     def calculate_matiere_rank(matiere, classe, moyenne_eleve):
         con = None
         try:
@@ -435,6 +455,18 @@ def Generation_Bulletin(page, Donner):
             print(f"Erreur PDF: {e}")
             return False
     
+    def open_folder(path):
+        """Ouvre le dossier selon la plateforme"""
+        try:
+            if os.name == 'nt':  # Windows
+                os.startfile(path)
+            elif os.uname().sysname == 'Darwin':  # macOS
+                os.system(f'open "{path}"')
+            else:  # Linux
+                os.system(f'xdg-open "{path}"')
+        except Exception as e:
+            print(f"Erreur ouverture dossier: {e}")
+    
     def select_periode_and_classe():
         init_trimestre_table()
         type_periode = ft.Dropdown(label="Type de période", options=[ft.dropdown.Option("Trimestre"), ft.dropdown.Option("Semestre")],
@@ -671,9 +703,12 @@ def Generation_Bulletin(page, Donner):
         loading_dialog = Dialog.loading_dialog(title="Génération en cours...", message=f"Génération de {len(students)} bulletin(s)...")
         
         try:
-            bulletins_dir = f"Bulletins/{classe_nom}/{periode.replace(' ', '_')}"
-            if not os.path.exists(bulletins_dir):
-                os.makedirs(bulletins_dir)
+            # Utiliser le dossier Documents de l'utilisateur
+            documents_folder = get_documents_folder()
+            bulletins_dir = documents_folder / "Bulletins_Scolaires" / classe_nom / periode.replace(' ', '_')
+            
+            # Créer le dossier s'il n'existe pas
+            bulletins_dir.mkdir(parents=True, exist_ok=True)
             
             success_count = 0
             for student in students:
@@ -681,10 +716,10 @@ def Generation_Bulletin(page, Donner):
                 if notes:
                     moyenne_gen = calculate_moyenne_generale(notes)
                     rang = calculate_class_rank(moyenne_gen, classe_nom, annee, notes)
-                    filename = f"{bulletins_dir}/Bulletin_{student[0]}_{student[1]}.pdf"
+                    filename = bulletins_dir / f"Bulletin_{student[0]}_{student[1]}.pdf"
                     html_content = generate_bulletin_html(student, classe_nom, notes, etablissement, annee,
                         "Bon Travail", moyenne_gen, rang, periode, type_periode, effectif, devise_etablissement, logo_path, bp_info, type_responsable)
-                    if save_bulletin_pdf(html_content, filename):
+                    if save_bulletin_pdf(html_content, str(filename)):
                         save_trimestre_moyenne(student[2], moyenne_gen, annee, periode)
                         success_count += 1
             
@@ -694,7 +729,7 @@ def Generation_Bulletin(page, Donner):
                 ft.Text(f"{success_count} bulletin(s) généré(s) !", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN),
                 ft.Text(f"Dossier: {bulletins_dir}", size=13),
                 ft.ElevatedButton("Ouvrir le dossier", icon=ft.Icons.FOLDER_OPEN,
-                    on_click=lambda e: os.startfile(bulletins_dir) if os.name == 'nt' else os.system(f'open "{bulletins_dir}"'))],
+                    on_click=lambda e: open_folder(str(bulletins_dir)))],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15, width=400, height=250),
                 actions=[ft.ElevatedButton("OK", bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE,
                     on_click=lambda e: Dialog.close_dialog(success_dialog))])
